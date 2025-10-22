@@ -234,3 +234,74 @@ startBtn.addEventListener('click', ()=>{
 
 // init
 resetGame()
+
+// --- Music: relaxing ambient generator (Web Audio API) ---
+let audioCtx = null
+let musicPlaying = false
+let masterGain, osc1, osc2, lfo, noiseNode, noiseGain, filter
+
+const musicBtn = document.getElementById('musicBtn')
+
+function initAudio(){
+  if(audioCtx) return
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  masterGain = audioCtx.createGain(); masterGain.gain.value = 0.0; masterGain.connect(audioCtx.destination)
+
+  // two detuned sine oscillators for warmth
+  osc1 = audioCtx.createOscillator(); osc1.type = 'sine'; osc1.frequency.value = 220
+  osc2 = audioCtx.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = 330
+  const oscGain = audioCtx.createGain(); oscGain.gain.value = 0.04
+  osc1.connect(oscGain); osc2.connect(oscGain); oscGain.connect(masterGain)
+
+  // slow LFO to modulate filter cutoff for movement
+  lfo = audioCtx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.05
+  const lfoGain = audioCtx.createGain(); lfoGain.gain.value = 300
+  filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 800
+  oscGain.connect(filter); filter.connect(masterGain)
+  lfo.connect(lfoGain); lfoGain.connect(filter.frequency)
+
+  // gentle noise for texture
+  const bufferSize = 2 * audioCtx.sampleRate
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate)
+  const output = noiseBuffer.getChannelData(0)
+  for (let i = 0; i < bufferSize; i++) output[i] = (Math.random()*2-1) * 0.2
+  noiseNode = audioCtx.createBufferSource(); noiseNode.buffer = noiseBuffer; noiseNode.loop = true
+  noiseGain = audioCtx.createGain(); noiseGain.gain.value = 0.02
+  const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type='lowpass'; noiseFilter.frequency.value = 1200
+  noiseNode.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(masterGain)
+
+  // start nodes
+  osc1.start(); osc2.start(); lfo.start(); noiseNode.start();
+}
+
+function fadeInMusic(){
+  initAudio()
+  masterGain.gain.cancelScheduledValues(audioCtx.currentTime)
+  masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime)
+  masterGain.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 2.5)
+  musicPlaying = true
+  musicBtn.textContent = 'Pause Music'
+}
+
+function fadeOutMusic(){
+  if(!audioCtx) return
+  masterGain.gain.cancelScheduledValues(audioCtx.currentTime)
+  masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime)
+  masterGain.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 1.5)
+  musicPlaying = false
+  musicBtn.textContent = 'Play Music'
+}
+
+musicBtn.addEventListener('click', async ()=>{
+  // Web Audio requires user gesture to start on many browsers
+  if(!audioCtx){
+    try{initAudio()}catch(e){console.warn('Audio init failed',e)}
+  }
+  if(!musicPlaying){
+    // resume context if suspended
+    if(audioCtx.state === 'suspended') await audioCtx.resume()
+    fadeInMusic()
+  } else {
+    fadeOutMusic()
+  }
+})

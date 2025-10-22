@@ -14,6 +14,8 @@ canvas{background:var(--panel);display:block;border-radius:6px;box-shadow:0 6px 
 .sidebar{min-width:200px}
 .sidebar > div{margin-bottom:12px}
 #startBtn{background:var(--accent);border:0;color:#042024;padding:8px 12px;border-radius:6px;cursor:pointer}
+.sidebar button{display:inline-block;margin-right:8px}
+#musicBtn{background:transparent;border:1px solid var(--muted);color:var(--muted);padding:6px 10px;border-radius:6px;cursor:pointer}
 .controls{font-size:13px;color:var(--muted)}
 .next{margin-top:8px}
 footer{margin-top:18px;color:var(--muted);font-size:13px}
