@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tetris-like</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Tetris-ähnlich</h1>
+    <div class="game">
+      <canvas id="board" width="300" height="600"></canvas>
+      <div class="sidebar">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lines: <span id="lines">0</span></div>
+        <div>Level: <span id="level">1</span></div>
+        <button id="startBtn">Start / Restart</button>
+        <p class="controls">
+          Steuerung:<br>
+          ← → : bewegen<br>
+          ↑ : drehen<br>
+          ↓ : schneller fallen
+        </p>
+        <div class="next">
+          <div>Nächstes:</div>
+          <canvas id="next" width="120" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+    <footer>Zum Veröffentlichen: branch <code>gh-pages</code> oder GitHub Pages Einstellungen nutzen.</footer>
+  </div>
+  <script src="main.js"></script>
+</body>
+</html>
