@@ -241,6 +241,7 @@ let musicPlaying = false
 let masterGain, osc1, osc2, lfo, noiseNode, noiseGain, filter
 
 const musicBtn = document.getElementById('musicBtn')
+const musicMode = document.getElementById('musicMode')
 
 function initAudio(){
   if(audioCtx) return
@@ -276,11 +277,16 @@ function initAudio(){
 
 function fadeInMusic(){
   initAudio()
+  // Start the selected mode
   masterGain.gain.cancelScheduledValues(audioCtx.currentTime)
   masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime)
   masterGain.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 2.5)
   musicPlaying = true
   musicBtn.textContent = 'Pause Music'
+  // if the user selected folk, start the folk engine instead of ambient
+  if(musicMode && musicMode.value === 'folk'){
+    startFolkMusic()
+  }
 }
 
 function fadeOutMusic(){
@@ -288,6 +294,8 @@ function fadeOutMusic(){
   masterGain.gain.cancelScheduledValues(audioCtx.currentTime)
   masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime)
   masterGain.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 1.5)
+  // stop folk-specific nodes if running
+  stopFolkMusic()
   musicPlaying = false
   musicBtn.textContent = 'Play Music'
 }
@@ -300,8 +308,119 @@ musicBtn.addEventListener('click', async ()=>{
   if(!musicPlaying){
     // resume context if suspended
     if(audioCtx.state === 'suspended') await audioCtx.resume()
+    // If ambient selected, ensure ambient nodes exist (initAudio already created them)
+    if(musicMode && musicMode.value === 'ambient'){
+      // ambient was created by initAudio
+    }
     fadeInMusic()
   } else {
     fadeOutMusic()
   }
 })
+
+// --- Folk music implementation (simple melody + chord accompaniment) ---
+let folkGain = null
+let folkInterval = null
+let folkChordNodes = []
+let folkMelodyIndex = 0
+
+function noteFreqFromSemitone(rootFreq, semitoneOffset){
+  return rootFreq * Math.pow(2, semitoneOffset/12)
+}
+
+function startFolkMusic(){
+  if(!audioCtx) return
+  // if already running, don't start again
+  if(folkInterval) return
+  // create a dedicated gain for folk so we can fade/stop it independently
+  folkGain = audioCtx.createGain(); folkGain.gain.value = 0.0; folkGain.connect(audioCtx.destination)
+
+  // Chord pad: simple detuned saws
+  const padRoot = 196 // G3 ~ folk-friendly
+  const chordProgression = [0,7,9,5] // I, V, vi, IV in semitones relative to G
+  let chordIndex = 0
+
+  function playChord(progStep){
+    // stop previous chord nodes
+    folkChordNodes.forEach(n=>{ try{ n.osc.stop(); }catch(e){} })
+    folkChordNodes = []
+    const chordRoot = padRoot * Math.pow(2, chordProgression[progStep]/12)
+    const thirds = [0,4,7] // major triad
+    thirds.forEach((st,i)=>{
+      const o = audioCtx.createOscillator(); o.type='sawtooth'; o.frequency.value = chordRoot * Math.pow(2,i)
+      o.detune.value = (i%2===0)?-10:10
+      const g = audioCtx.createGain(); g.gain.value = 0.06
+      const f = audioCtx.createBiquadFilter(); f.type='lowpass'; f.frequency.value = 900
+      o.connect(f); f.connect(g); g.connect(folkGain)
+      o.start()
+      folkChordNodes.push({osc:o,gain:g,filter:f})
+    })
+  }
+
+  // initial chord
+  playChord(chordIndex)
+  // change chord every 4 beats (approx)
+  const chordTimeMs = 1600
+  const chordTimer = setInterval(()=>{
+    chordIndex = (chordIndex+1) % chordProgression.length
+    playChord(chordIndex)
+  }, chordTimeMs)
+
+  // Melody: simple folk-like motif using semitone offsets in major scale
+  const root = 392 // G4
+  const majorScale = [0,2,4,5,7,9,11,12]
+  const melody = [0,2,4,2,0, -2,0,4,5,7,5,4,2,0]
+  folkMelodyIndex = 0
+
+  function playMelodyNote(){
+    const semitone = melody[folkMelodyIndex % melody.length]
+    const freq = noteFreqFromSemitone(root, semitone)
+    const o = audioCtx.createOscillator(); o.type='triangle'; o.frequency.value = freq
+    const g = audioCtx.createGain(); g.gain.value = 0
+    const env = {a:0.01,d:0.12,s:0.6,r:0.6}
+    o.connect(g); g.connect(folkGain)
+    const now = audioCtx.currentTime
+    g.gain.cancelScheduledValues(now)
+    g.gain.setValueAtTime(0, now)
+    g.gain.linearRampToValueAtTime(0.18, now + env.a)
+    g.gain.linearRampToValueAtTime(env.s * 0.18, now + env.a + env.d)
+    g.gain.linearRampToValueAtTime(0, now + env.a + env.d + env.r)
+    o.start(now)
+    o.stop(now + env.a + env.d + env.r + 0.05)
+    folkMelodyIndex++
+  }
+
+  // Start playing melody regularly
+  folkInterval = setInterval(()=>{
+    playMelodyNote()
+  }, 400)
+
+  // fade in folk gain
+  folkGain.gain.cancelScheduledValues(audioCtx.currentTime)
+  folkGain.gain.setValueAtTime(0, audioCtx.currentTime)
+  folkGain.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 1.5)
+
+  // store chordTimer so we can clear it on stop (attach to folkInterval object)
+  folkInterval._chordTimer = chordTimer
+}
+
+function stopFolkMusic(){
+  if(!audioCtx) return
+  if(!folkInterval) return
+  // fade out
+  try{
+    folkGain.gain.cancelScheduledValues(audioCtx.currentTime)
+    folkGain.gain.setValueAtTime(folkGain.gain.value, audioCtx.currentTime)
+    folkGain.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 0.8)
+  }catch(e){}
+  // clear intervals and stop oscillators after fade
+  clearInterval(folkInterval)
+  if(folkInterval._chordTimer) clearInterval(folkInterval._chordTimer)
+  setTimeout(()=>{
+    try{ folkChordNodes.forEach(n=>{ n.osc.stop(); }) }catch(e){}
+    try{ folkGain.disconnect(); }catch(e){}
+    folkGain = null
+    folkChordNodes = []
+    folkInterval = null
+  }, 900)
+}
