@@ -212,9 +212,9 @@ function update(time=0){
     ctx.fillStyle = 'rgba(0,0,0,0.6)'
     ctx.fillRect(0, canvas.height/2 -40, canvas.width, 80)
     ctx.fillStyle = '#fff'
-    ctx.font = '24px sans-serif'
+    ctx.font = 'bold 36px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('Game Over', canvas.width/2, canvas.height/2+8)
+    ctx.fillText('LOOSE', canvas.width/2, canvas.height/2+12)
   }
 }
 
