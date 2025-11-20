@@ -80,6 +80,49 @@ function randomPiece(){
 
 let board, player, next, dropCounter, dropInterval, lastTime, score, lines, level, gameOver
 
+// Particle system for row-break animation
+const particles = []
+let clearInProgress = false
+
+function spawnCellParticles(cellX, cellY, color){
+  // spawn multiple small square particles originating from the cell center
+  const count = 12
+  const cx = (cellX + 0.5) * BLOCK
+  const cy = (cellY + 0.5) * BLOCK
+  for(let i=0;i<count;i++){
+    const angle = Math.random() * Math.PI * 2
+    const speed = 60 + Math.random()*160
+    const vx = Math.cos(angle) * speed / 1000
+    const vy = Math.sin(angle) * speed / 1000 - (0.02 + Math.random()*0.15)
+    particles.push({ x: cx, y: cy, vx, vy, size: 3 + Math.random()*6, color, life: 0, ttl: 500 + Math.random()*600 })
+  }
+}
+
+function updateParticles(delta){
+  // delta in ms
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i]
+    p.life += delta
+    // gravity
+    p.vy += 0.0015 * delta
+    p.x += p.vx * delta
+    p.y += p.vy * delta
+    p.vx *= 0.995
+    p.vy *= 0.995
+    if(p.life > p.ttl) particles.splice(i,1)
+  }
+}
+
+function drawParticles(ctx){
+  for(const p of particles){
+    const a = 1 - Math.max(0, Math.min(1, p.life / p.ttl))
+    ctx.globalAlpha = a
+    ctx.fillStyle = p.color
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size)
+    ctx.globalAlpha = 1
+  }
+}
+
 function resetGame(){
   board = createMatrix(COLS, ROWS)
   player = {pos:{x:3,y:0}, matrix: randomPiece().matrix, id:0}
@@ -121,25 +164,45 @@ function collide(board, player){
 }
 
 function sweep(){
-  let rowCount = 0
+  // detect full rows
+  const cleared = []
   outer: for(let y=ROWS-1;y>=0;y--){
     for(let x=0;x<COLS;x++){
       if(!board[y][x]){
         continue outer
       }
     }
-    const row = board.splice(y,1)[0]
-    board.unshift(new Array(COLS).fill(0))
-    y++
-    rowCount++
+    cleared.push(y)
   }
-  if(rowCount>0){
+  if(cleared.length === 0) return false
+
+  // spawn particles for each cleared cell and clear them immediately for visual effect
+  clearInProgress = true
+  for(const y of cleared){
+    for(let x=0;x<COLS;x++){
+      const v = board[y][x]
+      if(v) spawnCellParticles(x, y, COLORS[v])
+      board[y][x] = 0
+    }
+  }
+
+  const animMs = 650
+  setTimeout(()=>{
+    // remove rows from bottom to top to keep indices correct
+    cleared.sort((a,b)=>b-a).forEach(rowIdx => {
+      board.splice(rowIdx, 1)
+      board.unshift(new Array(COLS).fill(0))
+    })
+    const rowCount = cleared.length
     lines += rowCount
     score += (rowCount * 100) * rowCount
     level = 1 + Math.floor(lines/10)
     dropInterval = Math.max(100, 1000 - (level-1)*100)
     updateUI()
-  }
+    clearInProgress = false
+  }, animMs)
+
+  return true
 }
 
 function playerDrop(){
@@ -147,18 +210,43 @@ function playerDrop(){
   if(collide(board, player)){
     player.pos.y--
     merge(board, player)
-    sweep()
-    spawn()
+    const delayed = sweep()
+    if(!delayed){
+      // only spawn if not game over and no clear animation is active
+      if(!gameOver && !clearInProgress) spawn()
+      else if(!gameOver && clearInProgress){
+        // try spawn after clear completes
+        const waiter = setInterval(()=>{
+          if(!clearInProgress){ clearInterval(waiter); if(!gameOver) spawn() }
+        }, 100)
+      }
+    } else {
+      // sweep returned true (animation in progress) and spawn will be handled after animation
+      const waiter2 = setInterval(()=>{
+        if(!clearInProgress){ clearInterval(waiter2); if(!gameOver) spawn() }
+      }, 120)
+    }
   }
   dropCounter = 0
 }
 
 function spawn(){
+  if(gameOver) return
+  // if clear animation is running, delay spawn
+  if(clearInProgress){ setTimeout(()=>{ if(!gameOver) spawn() }, 150); return }
   player.matrix = next.matrix
   player.pos = {x: Math.floor((COLS - player.matrix[0].length)/2), y:0}
   next = randomPiece()
-  if(collide(board, player)){
-    gameOver = true
+  // strict collision check at spawn: if any cell would overlap or be below, game over
+  const m = player.matrix
+  for(let y=0;y<m.length;y++){
+    for(let x=0;x<m[y].length;x++){
+      if(!m[y][x]) continue
+      const by = y + player.pos.y
+      const bx = x + player.pos.x
+      if(bx < 0 || bx >= COLS || by >= ROWS) { gameOver = true; return }
+      if(by >= 0 && board[by][bx]) { gameOver = true; return }
+    }
   }
 }
 
@@ -194,6 +282,8 @@ function draw(){
   drawMatrix(board, {x:0,y:0})
   // draw player
   drawMatrix(player.matrix, player.pos)
+  // draw particles on top
+  drawParticles(ctx)
   // next
   nctx.clearRect(0,0,nextCanvas.width,nextCanvas.height)
   drawMatrix(next.matrix, {x:0,y:0}, nctx, BLOCK)
@@ -206,6 +296,7 @@ function update(time=0){
   if(dropCounter > dropInterval && !gameOver){
     playerDrop()
   }
+  updateParticles(delta)
   draw()
   if(!gameOver) requestAnimationFrame(update)
   else{
