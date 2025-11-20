@@ -85,16 +85,16 @@ const particles = []
 let clearInProgress = false
 
 function spawnCellParticles(cellX, cellY, color){
-  // spawn multiple small square particles originating from the cell center
-  const count = 12
+  // spawn multiple particles originating from the cell center (more visible)
+  const count = 24
   const cx = (cellX + 0.5) * BLOCK
   const cy = (cellY + 0.5) * BLOCK
   for(let i=0;i<count;i++){
     const angle = Math.random() * Math.PI * 2
-    const speed = 60 + Math.random()*160
+    const speed = 80 + Math.random()*260
     const vx = Math.cos(angle) * speed / 1000
-    const vy = Math.sin(angle) * speed / 1000 - (0.02 + Math.random()*0.15)
-    particles.push({ x: cx, y: cy, vx, vy, size: 3 + Math.random()*6, color, life: 0, ttl: 500 + Math.random()*600 })
+    const vy = Math.sin(angle) * speed / 1000 - (0.03 + Math.random()*0.18)
+    particles.push({ x: cx, y: cy, vx, vy, size: 4 + Math.random()*8, color, life: 0, ttl: 700 + Math.random()*900 })
   }
 }
 
@@ -114,13 +114,17 @@ function updateParticles(delta){
 }
 
 function drawParticles(ctx){
+  // subtle glow + squares
+  ctx.save()
   for(const p of particles){
     const a = 1 - Math.max(0, Math.min(1, p.life / p.ttl))
     ctx.globalAlpha = a
     ctx.fillStyle = p.color
+    ctx.shadowColor = p.color
+    ctx.shadowBlur = Math.min(12, p.size)
     ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size)
-    ctx.globalAlpha = 1
   }
+  ctx.restore()
 }
 
 function resetGame(){
